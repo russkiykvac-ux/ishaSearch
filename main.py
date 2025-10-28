@@ -13,6 +13,7 @@ from telegram.ext import (
     InlineQueryHandler,
 )
 from uuid import uuid4
+import hashlib
 
 # ---------------- НАСТРОЙКИ ----------------
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -20,6 +21,7 @@ if not TELEGRAM_TOKEN:
     raise RuntimeError("❌ TELEGRAM_TOKEN не найден. Добавь его в переменные окружения Render!")
 
 wikipedia.set_lang("ru")
+SUMMARY_SENTENCES = 3  # сколько предложений показывать в сниппете
 
 # ---------------- ЛОГИ ----------------
 logging.basicConfig(
@@ -58,7 +60,10 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_chat_action(chat_id=update.inline_query.from_user.id, action="typing")
 
     try:
-        summary = wikipedia.summary(query, sentences=3)
+        summary = wikipedia.summary(query, sentences=SUMMARY_SENTENCES)
+        # Ссылка на полную статью
+        page_url = wikipedia.page(query).url
+        summary += f"\n\n🔗 [Открыть в Википедии]({page_url})"
     except wikipedia.exceptions.DisambiguationError as e:
         summary = "❗ Запрос неоднозначен. Возможные варианты:\n" + "\n".join(e.options[:5])
     except wikipedia.exceptions.PageError:
@@ -67,16 +72,23 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("Ошибка при поиске статьи")
         summary = "⚠️ Произошла ошибка при поиске статьи."
 
+    # Генерируем детерминированный ID для предотвращения дублирования
+    result_id = hashlib.md5(query.encode()).hexdigest()
+
     results = [
         InlineQueryResultArticle(
-            id=str(uuid4()),
+            id=result_id,
             title=f"Результат: {query}",
-            input_message_content=InputTextMessageContent(f"📘 *{query}*\n\n{summary}", parse_mode="Markdown"),
+            input_message_content=InputTextMessageContent(
+                f"📘 *{query}*\n\n{summary}",
+                parse_mode="Markdown"
+            ),
             description=summary[:100] + "..." if len(summary) > 100 else summary
         )
     ]
 
-    await update.inline_query.answer(results, cache_time=5)
+    # cache_time увеличен, чтобы Telegram не делал повторный запрос
+    await update.inline_query.answer(results, cache_time=60)
 
 # ---------------- ГЛАВНАЯ ----------------
 def main():
