@@ -12,7 +12,6 @@ from telegram.ext import (
     ContextTypes,
     InlineQueryHandler,
 )
-from uuid import uuid4
 import hashlib
 
 # ---------------- НАСТРОЙКИ ----------------
@@ -21,7 +20,7 @@ if not TELEGRAM_TOKEN:
     raise RuntimeError("❌ TELEGRAM_TOKEN не найден. Добавь его в переменные окружения Render!")
 
 wikipedia.set_lang("ru")
-SUMMARY_SENTENCES = 3  # сколько предложений показывать в сниппете
+SUMMARY_SENTENCES = 3  # количество предложений в сниппете
 
 # ---------------- ЛОГИ ----------------
 logging.basicConfig(
@@ -49,15 +48,11 @@ async def help_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------------- INLINE ПОИСК ----------------
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.inline_query.query.strip()
-
     if not query:
         return
 
     user = update.inline_query.from_user
     logger.info(f"🔍 {user.first_name} ищет: {query}")
-
-    # Симуляция "печати"
-    await context.bot.send_chat_action(chat_id=update.inline_query.from_user.id, action="typing")
 
     try:
         summary = wikipedia.summary(query, sentences=SUMMARY_SENTENCES)
@@ -72,7 +67,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.exception("Ошибка при поиске статьи")
         summary = "⚠️ Произошла ошибка при поиске статьи."
 
-    # Генерируем детерминированный ID для предотвращения дублирования
+    # Используем детерминированный ID, чтобы Telegram не дублировал сообщение
     result_id = hashlib.md5(query.encode()).hexdigest()
 
     results = [
@@ -87,7 +82,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     ]
 
-    # cache_time увеличен, чтобы Telegram не делал повторный запрос
     await update.inline_query.answer(results, cache_time=60)
 
 # ---------------- ГЛАВНАЯ ----------------
